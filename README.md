@@ -22,6 +22,8 @@
    ```python
    API_TOKEN = 'ВАШ_ТОКЕН'
    DATABASE = 'data.db'
+   ADMINS = []
+   ADMIN_PASSWORD = ""
    ```
 4. **Запустите бота:**
 
