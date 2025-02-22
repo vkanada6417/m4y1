@@ -1,2 +1,4 @@
 API_TOKEN = ""
 DATABASE = ""
+ADMINS = []
+ADMIN_PASSWORD = ""
