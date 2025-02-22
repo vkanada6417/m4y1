@@ -2,27 +2,26 @@ import sqlite3
 import os
 import cv2
 import threading
+import cv2
+import numpy as np
+import os
+from math import sqrt
 from config import DATABASE
 
 class DatabaseManager:
     def __init__(self, database):
         self.database = database
         self.lock = threading.Lock()
-        self.create_tables()  # Создаем таблицы при инициализации
-
-    def _get_connection(self):
-        """Создает новое потокобезопасное соединение"""
-        return sqlite3.connect(self.database, check_same_thread=False)
-
-    
+        self.create_tables()
 
     def create_tables(self):
+        """Создает таблицы с актуальной структурой"""
         with self.lock, self._get_connection() as conn:
-            # Удаляем старые таблицы
             conn.execute("DROP TABLE IF EXISTS users")
             conn.execute("DROP TABLE IF EXISTS prizes")
+            conn.execute("DROP TABLE IF EXISTS winners")
             
-            # Создаем новые таблицы с правильными полями
+            # Таблица пользователей
             conn.execute('''
                 CREATE TABLE users (
                     user_id INTEGER PRIMARY KEY,
@@ -30,6 +29,8 @@ class DatabaseManager:
                     points INTEGER DEFAULT 0
                 )
             ''')
+            
+            # Таблица призов
             conn.execute('''
                 CREATE TABLE prizes (
                     prize_id INTEGER PRIMARY KEY,
@@ -37,7 +38,35 @@ class DatabaseManager:
                     claims INTEGER DEFAULT 0
                 )
             ''')
+            
+            # Таблица победителей
+            conn.execute('''
+                CREATE TABLE winners (
+                    user_id INTEGER,
+                    prize_id INTEGER,
+                    FOREIGN KEY(user_id) REFERENCES users(user_id),
+                    FOREIGN KEY(prize_id) REFERENCES prizes(prize_id)
+                )
+            ''')
             conn.commit()
+
+    def get_users_rating(self):
+        """Возвращает топ-10 пользователей по очкам"""
+        with self.lock, self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT username, points 
+                FROM users 
+                ORDER BY points DESC 
+                LIMIT 10
+            ''')
+            return cursor.fetchall()
+
+    def _get_connection(self):
+        """Создает новое потокобезопасное соединение"""
+        return sqlite3.connect(self.database, check_same_thread=False)
+    
+    
 
     def user_exists(self, user_id):
         """Проверяет существование пользователя в базе"""
@@ -133,18 +162,79 @@ class DatabaseManager:
             ''', (prize_id,))
             conn.commit()
 
-    # ================== Rating Methods ==================
-    def get_users_rating(self):
+    def get_winners_img(self, user_id):
+        """Возвращает список полученных пользователем изображений"""
+        with self.lock, self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(''' 
+                SELECT image FROM winners 
+                INNER JOIN prizes ON 
+                winners.prize_id = prizes.prize_id
+                WHERE user_id = ?''', (user_id,))
+            return cursor.fetchall()
+def get_winners_img(self, user_id):
+        """Возвращает список полученных пользователем изображений"""
         with self.lock, self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT username, points
-                FROM users
-                ORDER BY points DESC
-                LIMIT 10
-            ''')
-            return cursor.fetchall()
+                SELECT p.image 
+                FROM winners w
+                INNER JOIN prizes p ON w.prize_id = p.prize_id
+                WHERE w.user_id = ?
+            ''', (user_id,))
+            return [row[0] for row in cursor.fetchall()]
+        
 
+# Добавляем функцию создания коллажа
+def create_collage(image_paths):
+    """Создает коллаж из изображений"""
+    if not image_paths:
+        return None
+    
+    images = []
+    for path in image_paths:
+        if not os.path.exists(path):
+            continue
+        image = cv2.imread(path)
+        if image is not None:
+            images.append(image)
+    
+    if not images:
+        return None
+    
+    # Определение размера сетки
+    num_images = len(images)
+    num_cols = max(1, int(sqrt(num_images)))
+    num_rows = max(1, (num_images + num_cols - 1) // num_cols)
+    
+    # Вычисление размера коллажа
+    tile_height = images[0].shape[0]
+    tile_width = images[0].shape[1]
+    collage = np.zeros((num_rows * tile_height, num_cols * tile_width, 3), dtype=np.uint8)
+    
+    # Заполнение коллажа
+    for i, image in enumerate(images):
+        row = i // num_cols
+        col = i % num_cols
+        y_start = row * tile_height
+        y_end = (row + 1) * tile_height
+        x_start = col * tile_width
+        x_end = (col + 1) * tile_width
+        collage[y_start:y_end, x_start:x_end] = image
+    
+    return collage
+
+    
+    
+    # ================== Rating Methods ==================
+    
+
+
+
+
+    
+
+        
 def hide_img(img_name):
     """Пикселизация изображения"""
     try:
