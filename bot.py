@@ -4,6 +4,8 @@ from logic import *
 import schedule
 import threading
 import time
+import cv2
+import numpy as np
 from config import *
 
 bot = TeleBot(API_TOKEN)
@@ -66,6 +68,45 @@ def handle_rating(message):
     
     bot.reply_to(message, table, parse_mode='Markdown')
 
+@bot.message_handler(commands=['get_my_score'])
+def handle_get_my_score(message):
+    try:
+        user_id = message.chat.id
+        
+        # Получаем данные из БД
+        winners_info = manager.get_winners_img(user_id)
+        if not winners_info:
+            bot.send_message(user_id, "You haven't won any prizes yet 😢")
+            return
+        
+        # Формируем пути к изображениям
+        all_images = os.listdir('img') + os.listdir('hidden_img')
+        image_paths = []
+        for img in all_images:
+            # Проверяем, получено ли изображение
+            is_claimed = any(img == winner[0] for winner in winners_info)
+            folder = 'img' if is_claimed else 'hidden_img'
+            image_paths.append(f'{folder}/{img}')
+        
+        # Создаем коллаж
+        collage = create_collage(image_paths)
+        if collage is None:
+            raise ValueError("Failed to create collage")
+        
+        # Сохраняем временный файл
+        temp_file = f"temp_collage_{user_id}.jpg"
+        cv2.imwrite(temp_file, collage)
+        
+        # Отправляем пользователю
+        with open(temp_file, 'rb') as photo:
+            bot.send_photo(user_id, photo, caption="Your achievements 🏆")
+        
+        # Удаляем временный файл
+        os.remove(temp_file)
+        
+    except Exception as e:
+        bot.reply_to(message, f"Error: {str(e)}")
+
 def send_message():
     prize = manager.get_available_prize()
     if not prize:
@@ -83,6 +124,83 @@ def send_message():
                              reply_markup=gen_markup(prize_id))
         except Exception as e:
             print(f"Error sending image: {e}")
+
+@bot.message_handler(commands=['get_my_score'])
+def handle_get_my_score(message):
+    try:
+        user_id = message.chat.id
+
+        # Получаем список полученных изображений
+        won_images = manager.get_winners_img(user_id)
+        if not won_images:
+            bot.send_message(user_id, "🌟 You haven't won any prizes yet!")
+            return
+
+        # Формируем пути ко всем изображениям
+        all_images = set(os.listdir('img')) | set(os.listdir('hidden_img'))
+        collage_paths = []
+        for img in all_images:
+            if img in won_images:
+                collage_paths.append(f'img/{img}')
+            else:
+                collage_paths.append(f'hidden_img/{img}')
+
+        # Создаем коллаж
+        collage = create_collage(collage_paths, tile_size=(300, 300))
+        if collage is None:
+            raise ValueError("No images to create collage")
+
+        # Сохраняем временный файл
+        temp_path = f"temp_{user_id}.jpg"
+        cv2.imwrite(temp_path, collage)
+
+        # Отправляем коллаж
+        with open(temp_path, 'rb') as photo:
+            bot.send_photo(user_id, photo, caption="Your Collection 🎁")
+
+        # Удаляем временный файл
+        os.remove(temp_path)
+
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Error: {str(e)}")
+
+@bot.message_handler(commands=['get_my_score'])
+def handle_get_my_score(message):
+    try:
+        user_id = message.chat.id
+        
+        # Получаем данные из БД
+        winners_info = manager.get_winners_img(user_id)
+        if not winners_info:
+            bot.send_message(user_id, "You haven't won any prizes yet 😢")
+            return
+        
+        # Формируем пути к изображениям
+        all_images = set(os.listdir('img')) | set(os.listdir('hidden_img'))
+        image_paths = []
+        for img in all_images:
+            is_claimed = any(img == winner[0] for winner in winners_info)
+            folder = 'img' if is_claimed else 'hidden_img'
+            image_paths.append(f'{folder}/{img}')
+        
+        # Создаем коллаж
+        collage = create_collage(image_paths)
+        if collage is None:
+            raise ValueError("Failed to create collage")
+        
+        # Сохраняем временный файл
+        temp_file = f"temp_collage_{user_id}.jpg"
+        cv2.imwrite(temp_file, collage)
+        
+        # Отправляем пользователю
+        with open(temp_file, 'rb') as photo:
+            bot.send_photo(user_id, photo, caption="Your achievements 🏆")
+        
+        # Удаляем временный файл
+        os.remove(temp_file)
+        
+    except Exception as e:
+        bot.reply_to(message, f"Error: {str(e)}")
 
 def schedule_thread():
     schedule.every().hour.at(":00").do(send_message)  # Send every hour
@@ -104,4 +222,3 @@ if __name__ == '__main__':
     # Keep main thread alive
     while True:
         time.sleep(3600)
-  
