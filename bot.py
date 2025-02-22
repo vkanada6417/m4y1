@@ -7,6 +7,7 @@ import time
 import cv2
 import numpy as np
 from config import *
+from config import ADMINS, ADMIN_PASSWORD
 
 bot = TeleBot(API_TOKEN)
 
@@ -125,6 +126,26 @@ def send_message():
         except Exception as e:
             print(f"Error sending image: {e}")
 
+@bot.message_handler(commands=['help'])
+def handle_help(message):
+    help_text = """
+Bot Help
+
+Basic Commands:
+/start - Register to start the game.
+/rating - View the top 10 players by points.
+/get_my_score - See your collected prizes as a collage.
+
+How to Play?
+- Every hour, the bot sends a hidden image.
+- The first 3 users to click "Get it!" win the prize!
+
+For Admins:
+/add_image [password] - Upload a new image.
+"""
+
+    bot.reply_to(message, help_text, parse_mode=None)  # Без разметки
+
 @bot.message_handler(commands=['get_my_score'])
 def handle_get_my_score(message):
     try:
@@ -201,6 +222,26 @@ def handle_get_my_score(message):
         
     except Exception as e:
         bot.reply_to(message, f"Error: {str(e)}")
+
+
+@bot.message_handler(commands=['add_image'])
+def handle_add_image(message):
+    if message.from_user.id not in ADMINS:
+        bot.reply_to(message, "🚫 Access denied!")
+        return
+
+    bot.reply_to(message, "📤 Send me the image!")
+    bot.register_next_step_handler(message, process_image)
+
+def process_image(message):
+    if message.photo:
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        img_name = f"img_{time.time()}.jpg"
+        with open(f'img/{img_name}', 'wb') as f:
+            f.write(downloaded_file)
+        manager.add_prize(img_name)
+        bot.reply_to(message, "✅ Image added successfully!")
 
 def schedule_thread():
     schedule.every().hour.at(":00").do(send_message)  # Send every hour
